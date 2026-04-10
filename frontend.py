@@ -7,12 +7,46 @@ import plotly.graph_objects as go
 from datetime import datetime
 import time
 import os
+import json
+import h5py
 
 # Force TensorFlow to use legacy Keras APIs so older .h5 models deserialize correctly.
 os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
 
 import tensorflow as tf
 from tensorflow import keras
+
+
+def _replace_batch_shape_with_batch_input_shape(node):
+    """Recursively convert legacy InputLayer config keys for newer Keras runtimes."""
+    if isinstance(node, dict):
+        if "batch_shape" in node and "batch_input_shape" not in node:
+            node["batch_input_shape"] = node.pop("batch_shape")
+        for key, value in list(node.items()):
+            node[key] = _replace_batch_shape_with_batch_input_shape(value)
+        return node
+    if isinstance(node, list):
+        return [_replace_batch_shape_with_batch_input_shape(item) for item in node]
+    return node
+
+
+def load_legacy_h5_model(model_path):
+    """Load an old Keras .h5 model by patching known config key differences."""
+    with h5py.File(model_path, "r") as h5file:
+        model_config = h5file.attrs.get("model_config")
+
+    if model_config is None:
+        raise ValueError("No model_config found in H5 file.")
+
+    if isinstance(model_config, bytes):
+        model_config = model_config.decode("utf-8")
+
+    config_dict = json.loads(model_config)
+    patched_config = _replace_batch_shape_with_batch_input_shape(config_dict)
+
+    model = keras.models.model_from_json(json.dumps(patched_config))
+    model.load_weights(model_path)
+    return model
 
 # Page configuration
 st.set_page_config(
@@ -27,7 +61,13 @@ st.set_page_config(
 def load_models():
     try:
         # Load Deep Learning model
-        model = keras.models.load_model("dl_model.h5", compile=False)
+        try:
+            model = keras.models.load_model("dl_model.h5", compile=False)
+        except Exception as model_error:
+            if "batch_shape" in str(model_error):
+                model = load_legacy_h5_model("dl_model.h5")
+            else:
+                raise
         
         # Load preprocessing objects
         scaler = joblib.load("scaler.pkl")
@@ -36,7 +76,10 @@ def load_models():
         
         return model, scaler, label_encoders, target_encoder
     except Exception as e:
-        st.error(f"⚠️ Model files not found. Please ensure all model files are in the correct directory. Error: {e}")
+        st.error(
+            f"⚠️ Model files not found or incompatible model format. "
+            f"TensorFlow: {tf.__version__}. Error: {e}"
+        )
         return None, None, None, None
 
 # Load models and preprocessing objects
