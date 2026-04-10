@@ -6,12 +6,8 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
 import time
-import os
 import json
 import h5py
-
-# Force TensorFlow to use legacy Keras APIs so older .h5 models deserialize correctly.
-os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
 
 import tensorflow as tf
 from tensorflow import keras
