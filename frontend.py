@@ -17,16 +17,25 @@ import tensorflow as tf
 from tensorflow import keras
 
 
-def _replace_batch_shape_with_batch_input_shape(node):
-    """Recursively convert legacy InputLayer config keys for newer Keras runtimes."""
+def _normalize_keras_model_config(node):
+    """Recursively normalize model JSON for cross-version Keras/TensorFlow loading."""
     if isinstance(node, dict):
         if "batch_shape" in node and "batch_input_shape" not in node:
             node["batch_input_shape"] = node.pop("batch_shape")
+
+        # Newer Keras may serialize dtype as an object; older tf.keras expects a plain dtype string.
+        if "dtype" in node and isinstance(node["dtype"], dict):
+            dtype_obj = node["dtype"]
+            class_name = dtype_obj.get("class_name")
+            dtype_name = dtype_obj.get("config", {}).get("name")
+            if class_name in {"DTypePolicy", "Policy"} and dtype_name:
+                node["dtype"] = dtype_name
+
         for key, value in list(node.items()):
-            node[key] = _replace_batch_shape_with_batch_input_shape(value)
+            node[key] = _normalize_keras_model_config(value)
         return node
     if isinstance(node, list):
-        return [_replace_batch_shape_with_batch_input_shape(item) for item in node]
+        return [_normalize_keras_model_config(item) for item in node]
     return node
 
 
@@ -42,7 +51,7 @@ def load_legacy_h5_model(model_path):
         model_config = model_config.decode("utf-8")
 
     config_dict = json.loads(model_config)
-    patched_config = _replace_batch_shape_with_batch_input_shape(config_dict)
+    patched_config = _normalize_keras_model_config(config_dict)
 
     model = keras.models.model_from_json(json.dumps(patched_config))
     model.load_weights(model_path)
