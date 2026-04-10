@@ -6,6 +6,11 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
 import time
+import os
+
+# Force TensorFlow to use legacy Keras APIs so older .h5 models deserialize correctly.
+os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
+
 import tensorflow as tf
 from tensorflow import keras
 
@@ -22,7 +27,7 @@ st.set_page_config(
 def load_models():
     try:
         # Load Deep Learning model
-        model = keras.models.load_model("dl_model.h5")
+        model = keras.models.load_model("dl_model.h5", compile=False)
         
         # Load preprocessing objects
         scaler = joblib.load("scaler.pkl")
