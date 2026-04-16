@@ -29,7 +29,7 @@ def get_supabase():
 
 supabase: Client = get_supabase()
 genai.configure(api_key=st.secrets["GEMINI_KEY"])
-gemini = genai.GenerativeModel("gemini-pro")
+gemini = genai.GenerativeModel("gemini-1.5-flash")
 
 # ── Load DNN ──
 @st.cache_resource
@@ -505,9 +505,13 @@ Provide structured analysis:
 Be concise, technical, and actionable. Max 200 words."""
         res = gemini.generate_content(prompt)
         return res.text
-    except Exception as e:
-        return f"⚠️ AI analysis unavailable: {e}"
+  except Exception as e:
+    return f"""**⚠️ AI Response Error:** {str(e)}
 
+**Manual Analysis:**
+- **Attack Type:** {"Zero-Day Novel Pattern" if is_zd else ("Known Network Intrusion" if label != "normal" else "Normal Traffic")}
+- **Severity:** {"Critical" if is_zd else ("High" if label != "normal" else "Low")}
+- **Recommendation:** {"Isolate the device immediately and investigate network logs" if label != "normal" else "Traffic appears normal — continue monitoring"}"""
 def save_prediction(user_id, protocol, service, label, confidence, severity, ai_text, detection_type, anomaly):
     try:
         supabase.table("predictions").insert({
